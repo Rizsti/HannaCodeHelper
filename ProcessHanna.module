@@ -1,0 +1,205 @@
+<?php
+
+/**
+ * ProcessWire Edit Link Process
+ *
+ * Provides the link capability as used by the TinyMCE Inputfield
+ * Works in combination with /modules/Inputfield/InputfieldTinyMCE/plugins/pwlink/editor_plugin.js
+ * 
+ * For more details about how Process modules work, please see: 
+ * /wire/core/Process.php 
+ * 
+ * ProcessWire 2.x 
+ * Copyright (C) 2015 by Ryan Cramer 
+ * Licensed under GNU/GPL v2, see LICENSE.TXT
+ * 
+ * http://processwire.com
+ * 
+ * @property string $relOptions
+ * @property string $classOptions
+ * @property string $targetOptions
+ * @property int $urlType
+ * @property int $extLinkRel
+ * @property string $extLinkTarget
+ *
+ */
+
+class ProcessHanna extends Process implements ConfigurableModule {
+
+	protected $page = null;
+	protected static $attributes = array();
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Hanna Code Insertion',          
+			'summary' => 'Provides cusomization to insert Hanna code.', 
+			'version' => 10, 
+			'permanent' => true, 
+			'permission' => 'page-edit',
+			'icon' => 'header', 
+			'requires' => array(
+				'ProcessHannaCode',
+				'TextformatterHannaCode',
+				'HannaCodeHelper'
+			)
+		);
+	}
+
+	public function init() {
+		$this->startLabel = $this->_('Choose page'); 
+		$id = (int) $this->input->get->id; 
+		if($id) $this->page = $this->pages->get($id); 
+		if($this->page && $this->page->id && !$this->user->hasPermission("page-view", $this->page)) throw new WireException("You don't have access to this page"); 
+		if(!$this->page) $this->page = new NullPage();
+
+		parent::init();
+	}
+
+
+	public function ___execute() {
+	
+		if($this->wire('input')->get('href')) {
+			$currentValue = $this->wire('sanitizer')->url($this->wire('input')->get('href')); 
+		} else {
+			$currentValue = '';
+		}
+
+		$form = $this->modules->get("InputfieldForm"); 
+		$form->attr('id', 'ProcessPageEditLinkForm');
+		
+		$this->wire('modules')->get('JqueryWireTabs'); 
+		
+		$fieldset = new InputfieldWrapper();
+		$fieldset->attr('title', $this->_('Link')); 
+		$fieldset->addClass('WireTab');
+		$form->add($fieldset); 
+
+		$field = $this->modules->get('InputfieldSelect');
+		$field->columnWidth = 40;
+		$field->attr('id+name', 'hanna_code');
+		$field->label = $this->_("Select tag");
+		$this->addSelectOptions($field, 'tags', $this->getTags()); 
+		$fieldset->add($field);
+
+		//Loop through all of our attributes and draw fields as necessary. Would be better to use actual fields
+		$data = $this->modules->getModuleConfigData('ProcessHanna'); 
+		foreach ($this->getTagAttributes() as $attr => $default) {
+			$name = "attr_" . $attr;
+			if (isset($data[$name])) {
+				$fieldtype = $data[$name] == "InputfieldPage" ? "InputfieldSelect" : $data[$name];
+				$field = $this->modules->get($fieldtype);
+				$field->attr('id+name', $name);
+				$field->label = $this->_("Value for {$attr}");
+				
+				if ($fieldtype == 'InputfieldSelect') {
+					foreach ($this->pages->find('parent=1267') as $option) {
+						$field->addOption($option->id, $option->title);
+					}
+				}
+				$fieldset->add($field);
+			}
+		}
+		return $form->render();
+	}
+
+
+	public static function getModuleConfigInputfields(array $data) {
+
+		$inputfields = new InputfieldWrapper();
+
+		foreach (self::getTagAttributes() as $attr => $default) {
+			$name = 'attr_' . $attr;
+			$field = wire('modules')->get('InputfieldSelect');
+			$field->columnWidth = 50;
+			$field->attr('id+name', $name);
+			$field->label = "Field type for {$attr}";
+			$field->description = "The default value for this attribute is \"{$default}\"";
+			$field->addOption('InputfieldCKEditor', 'Textarea');
+			$field->addOption('InputfieldText', 'Text');
+			$field->addOption('InputfieldPage', 'Page');
+			$field->addOption('InputfieldInteger', 'Integer');
+			if (isset($data[$name])) {
+				$field->setAttribute('value', $data[$name]);
+			}
+	
+			$inputfields->append($field);
+
+		}
+
+
+		return $inputfields;
+	}
+
+	
+	public static function getTags() {
+		$data = wire('modules')->getModuleConfigData('TextformatterHannaCode'); 
+		$openTag = isset($data['openTag']) ? $data['openTag'] : TextformatterHannaCode::DEFAULT_OPEN_TAG;
+        $closeTag = isset($data['closeTag']) ? $data['closeTag'] : TextformatterHannaCode::DEFAULT_CLOSE_TAG; 
+
+				// instantiate TextformatterHannaCode
+		$hanna = wire('modules')->get('TextformatterHannaCode');
+
+		// fetch Hanna Code tags from database
+		$return = array();
+		$result = wire('db')->query("SELECT name, code FROM hanna_code ORDER BY name"); 
+
+		while ($row = $result->fetch_row()) {
+			list($name, $code) = $row;
+			$attrs = '';
+			foreach ($hanna->extractDefaultCodeAttrs($code) as $attrName => $attrValue) {
+				if (!array_key_exists($attrName, self::$attributes)) { 
+					self::$attributes[$attrName] = $attrValue;
+				}
+				$attrs .= " $attrName=\"$attrValue\"";
+			}
+			if (preg_match('/[a-zA-Z0-9]$/', $openTag)) $name = " name=\"$name\"";
+			$tag = $openTag . $name . $attrs . $closeTag;
+			$return[$name] = array($tag);
+		}
+		return $return;
+			
+	}
+
+	public static function getTagAttributes() {
+		if (self::$attributes == null) {
+			self::getTags();
+		}
+		return self::$attributes;
+		$data = wire('modules')->getModuleConfigData('TextformatterHannaCode'); 
+		$openTag = isset($data['openTag']) ? $data['openTag'] : TextformatterHannaCode::DEFAULT_OPEN_TAG;
+        $closeTag = isset($data['closeTag']) ? $data['closeTag'] : TextformatterHannaCode::DEFAULT_CLOSE_TAG; 
+
+				// instantiate TextformatterHannaCode
+		$hanna = wire('modules')->get('TextformatterHannaCode');
+
+		// fetch Hanna Code tags from database
+		$return = array();
+		$result = wire('db')->query("SELECT name, code FROM hanna_code ORDER BY name"); 
+
+		while ($row = $result->fetch_row()) {
+			list($name, $code) = $row;
+			$attrs = '';
+			foreach ($hanna->extractDefaultCodeAttrs($code) as $attrName => $attrValue) {
+				$attrs .= " $attrName=\"$attrValue\"";
+			}
+			if (preg_match('/[a-zA-Z0-9]$/', $openTag)) $name = " name=\"$name\"";
+			$tag = $attrs;
+			$return[$name] = array($tag);
+		}
+		return $return;
+			
+	}
+
+	protected function addSelectOptions(InputfieldSelect $field, $attrName, $optionsText) {
+
+		foreach ($optionsText as $value => $option) {
+			$attr = array();
+			$label = @$option[0];
+			$field->addOption($value, $label, $attr);
+
+		}
+
+	}
+
+}
+
