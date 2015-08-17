@@ -130,13 +130,46 @@ function loadIframeHannaInserter(editor) {
         // action when insert link button is clicked
         function clickInsert() {
 
-            // var $i = $iframe.contents();
+            var $i = $iframe.contents();
             // var $a = $($("#link_markup", $i).text());
             // if($a.attr('href') && $a.attr('href').length) {
             //     $a.html(selectionText);
             //     var html = $("<div />").append($a).html();
             //     editor.insertHtml(html);
             // }
+
+            var tag = $i.find('#hanna_code option:selected').text();
+            console.log(tag);
+            var attrs = tag.replace("[[", "").replace("]]", "").split(" ");
+
+            //the first element is the tag name, so ignore it
+            for (var i = 1; i < attrs.length; i++) {
+
+                //when the value is defined, that's the end of the attribute name
+                var element_name = attrs[i].substring(0, attrs[i].indexOf('=')); 
+                var $element = $i.find('#attr_'+element_name);
+                var element;
+                if ($element.is('textarea')) {
+                    var $wysiwyg = $element.siblings('.cke').find('iframe').contents().find('body');
+                    console.log($wysiwyg);
+                    element = $wysiwyg.html();
+                }
+                else {
+                    element = $element.val();
+                }
+
+                console.log(element_name);
+                console.log($element.val());
+
+                var replacement = element_name + '="' + element +'"';
+                console.log(attrs[i]);
+                console.log(replacement);
+                tag = tag.replace(attrs[i], replacement);
+
+            }
+
+            var html = $("<div />").append(tag).html();
+                editor.insertHtml(html);
         
             $iframe.dialog("close");
         }
